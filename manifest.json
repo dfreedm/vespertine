@@ -1,6 +1,16 @@
 {
   "name": "Vespertine",
-  "version": "0.1",
+  "version": "0.0.1",
   "description": "Switch between dark and light mode",
-  "manifest_version": 2
+  "manifest_version": 2,
+  "browser_action": {
+    "default_title": "Switch page to dark"
+  },
+  "background": {
+    "scripts": ["dist/background.js"],
+    "persistent": false
+  },
+  "permissions": [
+    "debugger"
+  ]
 }
