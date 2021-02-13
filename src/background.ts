@@ -13,8 +13,8 @@ const defaultColorScheme = window.matchMedia('(prefers-color-scheme: dark)')
 
 updateTitle(getOppositeColorScheme(defaultColorScheme));
 
-function updateTitle(colorScheme: string) {
-  chrome.browserAction.setTitle({ title: `Set page to ${colorScheme}` });
+function updateTitle(colorScheme: string, tabId?: number) {
+  chrome.browserAction.setTitle({ title: `Set page to ${colorScheme}`, tabId });
 }
 /**
  * Options to send with Emulation.setEmulatedMedia
@@ -34,15 +34,20 @@ function getOppositeColorScheme(currentScheme: string): string {
 }
 
 function setPageOptions(tabId: number, ...options: EmulatedMediaFeatures[]) {
-  chrome.debugger.sendCommand({ tabId }, 'Emulation.setEmulatedMedia', {
+  const commandParams: EmulatedMediaOptions = {
     media: 'screen',
     features: options,
-  } as EmulatedMediaOptions);
+  };
+  chrome.debugger.sendCommand(
+    { tabId },
+    'Emulation.setEmulatedMedia',
+    commandParams
+  );
 }
 
 function cleanup(tabId: number) {
   debuggerTabs.delete(tabId);
-  updateTitle(getOppositeColorScheme(defaultColorScheme));
+  updateTitle(getOppositeColorScheme(defaultColorScheme), tabId);
 }
 
 chrome.browserAction.onClicked.addListener((tab) => {
@@ -59,7 +64,7 @@ chrome.browserAction.onClicked.addListener((tab) => {
           name: 'prefers-color-scheme',
           value: colorScheme,
         });
-        updateTitle(defaultColorScheme);
+        updateTitle(defaultColorScheme, tabId);
       }
     });
   } else {
