@@ -1,21 +1,22 @@
-/**
- * The set of tabIds which have the debugger attached
- */
-const debuggerTabs: Set<number> = new Set();
-
 // Need 1.3+ for EmulatedMediaFeatures
 const debuggerProtocolVersion = '1.3';
 
-const defaultColorScheme = window.matchMedia('(prefers-color-scheme: dark)')
-  .matches
-  ? 'dark'
-  : 'light';
-
-updateTitle(getOppositeColorScheme(defaultColorScheme));
-
-function updateTitle(colorScheme: string, tabId?: number) {
-  chrome.browserAction.setTitle({ title: `Set page to ${colorScheme}`, tabId });
+/**
+ * Determine if the given tab has a debugger attached
+ *
+ * @param tabId
+ */
+function tabIsActive(tabId: number) {
+  return new Promise<boolean>((resolve) => {
+    chrome.debugger.getTargets((debuggees) => {
+      const exists = debuggees.some((debuggee) => {
+        return debuggee.tabId === tabId && debuggee.attached;
+      });
+      resolve(exists);
+    });
+  });
 }
+
 /**
  * Options to send with Emulation.setEmulatedMedia
  */
@@ -33,6 +34,36 @@ function getOppositeColorScheme(currentScheme: string): string {
   return currentScheme === 'light' ? 'dark' : 'light';
 }
 
+function getCurrentTabColorScheme(tabId: number): Promise<'light' | 'dark'> {
+  return new Promise((resolve) => {
+    const handleResults = (results?: chrome.scripting.InjectionResult[]) => {
+      const result: boolean = results?.[0]?.result ?? false;
+      resolve(result ? 'dark' : 'light');
+    };
+    if (chrome.scripting) {
+      // chrome version 88+
+      chrome.scripting.executeScript(
+        {
+          target: { tabId },
+          function: function () {
+            return window.matchMedia('(prefers-color-scheme: dark)').matches;
+          },
+        },
+        handleResults
+      );
+    } else {
+      // chrome version < 88
+      chrome.tabs.executeScript(
+        tabId,
+        {
+          code: `window.matchMedia('(prefers-color-scheme: dark)).matches`,
+        },
+        handleResults
+      );
+    }
+  });
+}
+
 function setPageOptions(tabId: number, ...options: EmulatedMediaFeatures[]) {
   const commandParams: EmulatedMediaOptions = {
     media: 'screen',
@@ -45,35 +76,30 @@ function setPageOptions(tabId: number, ...options: EmulatedMediaFeatures[]) {
   );
 }
 
-function cleanup(tabId: number) {
-  debuggerTabs.delete(tabId);
-  updateTitle(getOppositeColorScheme(defaultColorScheme), tabId);
-}
-
-chrome.browserAction.onClicked.addListener((tab) => {
-  const tabId = tab.id!;
+async function handleClick(tab: chrome.tabs.Tab) {
+  // tab.id will be undefined if the target is weird, like a chrome:// page
+  if (tab.id === undefined) {
+    return;
+  }
+  const tabId = tab.id;
   const debugee = { tabId };
-  if (!debuggerTabs.has(tabId)) {
-    chrome.debugger.attach(debugee, debuggerProtocolVersion, () => {
+  const active = await tabIsActive(tabId);
+  if (!active) {
+    chrome.debugger.attach(debugee, debuggerProtocolVersion, async () => {
       if (chrome.runtime.lastError) {
-        alert(chrome.runtime.lastError.message);
+        return;
       } else {
-        debuggerTabs.add(tabId);
-        const colorScheme = getOppositeColorScheme(defaultColorScheme);
+        const tabColorScheme = await getCurrentTabColorScheme(tabId);
+        const oppositeColorScheme = getOppositeColorScheme(tabColorScheme);
         setPageOptions(tabId, {
           name: 'prefers-color-scheme',
-          value: colorScheme,
+          value: oppositeColorScheme,
         });
-        updateTitle(defaultColorScheme, tabId);
       }
     });
   } else {
-    chrome.debugger.detach(debugee, () => {
-      cleanup(tabId);
-    });
+    chrome.debugger.detach(debugee);
   }
-});
+}
 
-chrome.debugger.onDetach.addListener(({ tabId }) => {
-  cleanup(tabId!);
-});
+chrome.action.onClicked.addListener(handleClick);

@@ -1,12 +1,12 @@
 {
   "compilerOptions": {
     "target": "es2017",
-    "module": "es2015",
+    "module": "AMD",
     "sourceMap": false,
     "types": ["chrome-types"],
     "typeRoots": ["node_modules"],
     "lib": ["es2017", "esnext.asynciterable", "dom"],
-    "outDir": "dist",
+    "outFile": "vespertine.js",
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
